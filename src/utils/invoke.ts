@@ -298,6 +298,7 @@ export interface DownloadTask {
 }
 
 export type DownloadStatus =
+  | 'Queued'
   | 'Pending'
   | 'Fetching'
   | 'Downloading'

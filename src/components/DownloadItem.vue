@@ -106,9 +106,15 @@ const isRetryable = computed(() =>
   isRetryableError(props.task.error_message || '')
 );
 
-const statusIcon = computed(() => ({ Completed: '✅', Failed: '❌', Cancelled: '⏹' }[props.task.status] || '⏳'));
+const statusIcon = computed(() => ({
+  Completed: '✅', Failed: '❌', Cancelled: '⏹', Queued: '⏳',
+  Pending: '⏳', Fetching: '🔍', Downloading: '⬇️',
+  Paused: '⏸', Merging: '🔄',
+}[props.task.status] || '⏳'));
 const statusText = computed(() => ({
   Completed: t('item.completed'), Failed: t('item.failed'), Cancelled: t('item.cancelled'),
+  Queued: t('item.queued'), Pending: t('item.preparing'), Fetching: t('item.fetching'),
+  Downloading: t('item.downloading'), Paused: t('item.paused'), Merging: t('item.merging'),
 }[props.task.status] || props.task.status));
 const statusBadgeClass = computed(() => ({
   'badge-success': props.task.status === 'Completed',
