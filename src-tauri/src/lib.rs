@@ -10,8 +10,9 @@ mod updater;
 mod ytdlp;
 
 use std::sync::Arc;
+use std::path::PathBuf;
 use tauri::{
-    Manager, Emitter,
+    Manager, Emitter, Image,
     tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent},
     menu::{MenuBuilder, MenuItemBuilder},
 };
@@ -57,7 +58,6 @@ pub fn run() {
             // 启动剪贴板监听
             if settings.clipboard_watch {
                 let cw = clipboard_watcher.clone();
-                let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     cw.set_enabled(true).await;
                 });
@@ -132,6 +132,23 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let show = MenuItemBuilder::with_id("show", "显示主窗口").build(app)?;
     let quit = MenuItemBuilder::with_id("quit", "退出").build(app)?;
 
+    // 获取图标路径：支持开发和构建两种模式
+    let dev_icon = PathBuf::from("src-tauri/icons/icon.ico");
+    let icon_path = if dev_icon.exists() {
+        dev_icon
+    } else {
+        // 构建模式下，图标通常在可执行文件旁边或资源目录
+        PathBuf::from("icons/icon.ico")
+    };
+
+    if !icon_path.exists() {
+        log::warn!("Tray icon not found at: {:?}", icon_path);
+    }
+
+    // 读取图标文件
+    let icon_data = std::fs::read(&icon_path)?;
+    let icon_image = Image::from_bytes(&icon_data)?;
+
     let menu = MenuBuilder::new(app)
         .item(&show)
         .separator()
@@ -139,6 +156,7 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     let _tray = TrayIconBuilder::new()
+        .icon(icon_image)
         .menu(&menu)
         .tooltip("YT-DLP Desktop")
         .on_menu_event(move |app, event| {
