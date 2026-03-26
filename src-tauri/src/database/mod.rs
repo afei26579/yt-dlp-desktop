@@ -139,7 +139,13 @@ impl Database {
     }
 
     pub fn clear_history(&self) -> Result<()> {
-        self.conn.lock().unwrap().execute("DELETE FROM download_history", [])?;
+        log::info!("[DEBUG] Database clear_history called");
+        let result = self.conn.lock().unwrap().execute("DELETE FROM download_history", []);
+        match &result {
+            Ok(rows) => log::info!("[DEBUG] Database cleared, {} rows deleted", rows),
+            Err(e) => log::error!("[ERROR] Database clear failed: {}", e),
+        }
+        result?;
         Ok(())
     }
 

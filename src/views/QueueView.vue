@@ -21,7 +21,7 @@
     <section class="section">
       <div class="section-header">
         <h3>{{ t('queue.history') }} ({{ store.historyTasks.length }})</h3>
-        <button v-if="store.historyTasks.length > 0" class="btn btn-ghost" @click="handleClearHistory">{{ t('queue.clearAll') }}</button>
+        <button v-if="store.historyTasks.length > 0" class="btn btn-ghost" @click.prevent="handleClearHistory">{{ t('queue.clearAll') }}</button>
       </div>
       <div v-if="store.historyTasks.length === 0" class="empty-state">
         <div class="empty-icon">📭</div>
@@ -38,13 +38,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, nextTick } from 'vue';
 import DownloadItem from '@/components/DownloadItem.vue';
 import { useDownloadStore } from '@/stores/download';
 import { useSettingsStore } from '@/stores/settings';
 import { openFileLocation, deleteHistoryItem, clearHistory } from '@/utils/invoke';
 import { t } from '@/utils/i18n';
 import type { DownloadTask } from '@/utils/invoke';
+import { confirm } from '@tauri-apps/plugin-dialog';
 
 const store = useDownloadStore();
 const settingsStore = useSettingsStore();
@@ -83,8 +84,39 @@ async function handleDelete(id: string) {
   try { await deleteHistoryItem(id); store.historyTasks = store.historyTasks.filter(item => item.id !== id); } catch (e) { console.error(e); }
 }
 async function handleClearHistory() {
-  if (confirm(t('queue.clearConfirm'))) {
-    try { await clearHistory(); store.historyTasks = []; } catch (e) { console.error(e); }
+  console.log('[DEBUG] handleClearHistory called');
+  console.log('[DEBUG] Current history count:', store.historyTasks.length);
+
+  // 使用 Tauri 的 confirm API（异步）
+  const confirmMessage = t('queue.clearConfirm');
+  console.log('[DEBUG] Confirm message:', confirmMessage);
+
+  // 等待用户确认（这会阻塞执行，直到用户点击按钮）
+  const confirmed = await confirm(confirmMessage, {
+    title: 'YT-DLP Desktop',
+    kind: 'warning'
+  });
+
+  console.log('[DEBUG] User confirmed (type):', typeof confirmed);
+  console.log('[DEBUG] User confirmed (value):', confirmed);
+
+  // 严格检查 confirmed 的值
+  if (confirmed !== true) {
+    console.log('[DEBUG] User cancelled, returning without clearing');
+    return;
+  }
+
+  console.log('[DEBUG] User confirmed, starting to clear...');
+
+  // 用户点击确定后，才执行清除操作
+  try {
+    await clearHistory();
+    console.log('[DEBUG] Backend clear_history completed');
+    console.log('[DEBUG] Clearing frontend store.historyTasks');
+    store.historyTasks = [];
+    console.log('[DEBUG] Frontend cleared, new count:', store.historyTasks.length);
+  } catch (e) {
+    console.error('[ERROR] Clear history failed:', e);
   }
 }
 </script>

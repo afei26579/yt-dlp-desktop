@@ -106,7 +106,7 @@ import { isDouyinCookieError } from '@/utils/errors';
 
 const store = useDownloadStore();
 const inputRef = ref<HTMLInputElement | null>(null);
-const rawUrl = ref('');
+const rawUrl = ref(store.currentUrl); // ★ 初始化时从store恢复
 defineEmits<{ 'go-settings': [section?: string] }>();
 
 // 输入框显示值：批量模式下显示摘要，否则显示URL
@@ -120,6 +120,7 @@ const displayValue = computed({
   set: (val: string) => {
     if (!store.isBatchMode) {
       rawUrl.value = val;
+      store.currentUrl = val; // ★ 同步到store
     }
   },
 });
@@ -207,7 +208,7 @@ function handleSubmit() {
 
 function handleClear() {
   rawUrl.value = '';
-  store.reset();
+  store.clearUrl();
   inputRef.value?.focus();
 }
 

@@ -137,6 +137,7 @@ impl ProcessManager {
         let json: serde_json::Value = serde_json::from_str(&stdout)
             .map_err(|e| format!("Parse error: {}", e))?;
         let formats = Self::parse_formats(&json);
+        let (available_subtitles, has_subtitles) = Self::extract_subtitle_languages(&json);
 
         Ok(VideoInfo {
             id: json["id"].as_str().unwrap_or("").into(),
@@ -152,6 +153,8 @@ impl ProcessManager {
             is_playlist: json["_type"].as_str() == Some("playlist"),
             playlist_count: json["playlist_count"].as_u64().map(|n| n as u32),
             entries: Vec::new(),
+            available_subtitles,
+            has_subtitles,
         })
     }
 
@@ -177,6 +180,7 @@ impl ProcessManager {
             .map_err(|e| format!("Parse error: {}", e))?;
         if json["_type"].as_str() == Some("playlist") { return self.parse_playlist_json(url, &json); }
         let formats = Self::parse_formats(&json);
+        let (available_subtitles, has_subtitles) = Self::extract_subtitle_languages(&json);
         Ok(VideoInfo {
             id: json["id"].as_str().unwrap_or("").into(),
             title: json["title"].as_str().unwrap_or("Unknown").into(),
@@ -186,6 +190,7 @@ impl ProcessManager {
             description: json["description"].as_str().map(|s| s.into()),
             webpage_url: json["webpage_url"].as_str().unwrap_or(url).into(),
             formats, is_playlist: false, playlist_count: None, entries: Vec::new(),
+            available_subtitles, has_subtitles,
         })
     }
 
@@ -221,6 +226,7 @@ impl ProcessManager {
                 ext: "mp4".into(), resolution: None, filesize: None, filesize_approx: None,
                 vcodec: None, acodec: None, quality_label: "最佳画质".into() }],
             is_playlist: true, playlist_count: Some(count), entries,
+            available_subtitles: Vec::new(), has_subtitles: false,
         })
     }
 
@@ -253,6 +259,7 @@ impl ProcessManager {
                 ext: "mp4".into(), resolution: None, filesize: None, filesize_approx: None,
                 vcodec: None, acodec: None, quality_label: "最佳画质".into() }],
             is_playlist: true, playlist_count: Some(count), entries,
+            available_subtitles: Vec::new(), has_subtitles: false,
         })
     }
 
@@ -359,8 +366,12 @@ impl ProcessManager {
 
         if task.download_subtitle {
             cmd.arg("--write-sub").arg("--write-auto-sub");
-            if let Some(ref l) = task.subtitle_lang { cmd.arg("--sub-lang").arg(l); }
-            cmd.arg("--embed-subs");
+            if let Some(ref l) = task.subtitle_lang {
+                cmd.arg("--sub-lang").arg(l);
+            }
+            // 下载独立字幕文件而不是嵌入，兼容性更好
+            cmd.arg("--sub-format").arg("srt/best");
+            // 注意：移除了 --embed-subs，字幕将保存为独立的 .srt 文件
         }
         if let Some(ref limit) = settings.speed_limit {
             if !limit.is_empty() { cmd.arg("--limit-rate").arg(limit); }
@@ -389,6 +400,8 @@ impl ProcessManager {
 
         // ★ 修复1: 进度分段追踪
         let dest_count = Arc::new(AtomicU32::new(0));
+        // ★ 修复2: 最大进度追踪，防止进度回落
+        let max_progress = Arc::new(RwLock::new(0.0_f64));
         let cancelled_set = self.cancelled_set.clone();
 
         // stdout
@@ -399,6 +412,7 @@ impl ProcessManager {
             let tid = task_id.clone();
             let fp = output_filepath.clone();
             let dc = dest_count.clone();
+            let mp = max_progress.clone();
             let cs = cancelled_set.clone();
             tauri::async_runtime::spawn(async move {
                 while let Ok(Some(line)) = lines.next_line().await {
@@ -413,6 +427,17 @@ impl ProcessManager {
 
                     if let Some(mut p) = parser::parse_progress_line(&tid, &trimmed) {
                         adjust_progress(&mut p, dc.load(Ordering::SeqCst));
+
+                        // 确保进度只增不减
+                        let mut max_p = mp.write().await;
+                        if p.progress > *max_p {
+                            *max_p = p.progress;
+                        } else if p.status == DownloadStatus::Downloading {
+                            // 如果当前进度小于最大进度，使用最大进度
+                            p.progress = *max_p;
+                        }
+                        drop(max_p);
+
                         let _ = sender.send(p);
                         continue;
                     }
@@ -436,6 +461,7 @@ impl ProcessManager {
             let tid = task_id.clone();
             let sc = stderr_lines.clone();
             let dc = dest_count.clone();
+            let mp = max_progress.clone();
             let cs = cancelled_set.clone();
             tauri::async_runtime::spawn(async move {
                 while let Ok(Some(line)) = lines.next_line().await {
@@ -450,6 +476,16 @@ impl ProcessManager {
 
                     if let Some(mut p) = parser::parse_progress_line(&tid, &trimmed) {
                         adjust_progress(&mut p, dc.load(Ordering::SeqCst));
+
+                        // 确保进度只增不减
+                        let mut max_p = mp.write().await;
+                        if p.progress > *max_p {
+                            *max_p = p.progress;
+                        } else if p.status == DownloadStatus::Downloading {
+                            p.progress = *max_p;
+                        }
+                        drop(max_p);
+
                         let _ = sender.send(p);
                     }
                 }
@@ -573,6 +609,33 @@ impl ProcessManager {
                 vcodec: None, acodec: None, quality_label: "最佳画质".into() });
         }
         formats
+    }
+
+    /// 提取可用的字幕语言列表
+    fn extract_subtitle_languages(json: &serde_json::Value) -> (Vec<String>, bool) {
+        let mut languages = Vec::new();
+
+        // 提取手动上传的字幕
+        if let Some(subtitles) = json["subtitles"].as_object() {
+            for lang in subtitles.keys() {
+                if !languages.contains(lang) {
+                    languages.push(lang.clone());
+                }
+            }
+        }
+
+        // 提取自动生成的字幕
+        if let Some(auto_captions) = json["automatic_captions"].as_object() {
+            for lang in auto_captions.keys() {
+                if !languages.contains(lang) {
+                    languages.push(lang.clone());
+                }
+            }
+        }
+
+        let has_subtitles = !languages.is_empty();
+        languages.sort();
+        (languages, has_subtitles)
     }
 }
 

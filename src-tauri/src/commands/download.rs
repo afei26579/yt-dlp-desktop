@@ -260,7 +260,13 @@ pub async fn get_download_history(limit: u32, offset: u32, state: State<'_, AppS
 
 #[tauri::command]
 pub async fn clear_history(state: State<'_, AppState>) -> Result<(), String> {
-    state.db.clear_history().map_err(|e| format!("DB: {}", e))
+    log::info!("[DEBUG] clear_history command called");
+    let result = state.db.clear_history().map_err(|e| format!("DB: {}", e));
+    match &result {
+        Ok(_) => log::info!("[DEBUG] clear_history completed successfully"),
+        Err(e) => log::error!("[ERROR] clear_history failed: {}", e),
+    }
+    result
 }
 
 #[tauri::command]

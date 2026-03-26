@@ -15,6 +15,8 @@ pub struct VideoInfo {
     pub is_playlist: bool,
     pub playlist_count: Option<u32>,
     pub entries: Vec<PlaylistEntry>,
+    pub available_subtitles: Vec<String>, // 可用的字幕语言列表
+    pub has_subtitles: bool, // 是否有字幕
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

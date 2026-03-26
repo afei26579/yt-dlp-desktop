@@ -282,9 +282,16 @@ export const useDownloadStore = defineStore('download', () => {
   }
 
   function reset() {
-    currentUrl.value = ''; videoInfo.value = null; fetchError.value = null;
+    // ★ 保留currentUrl，以便用户修复错误后重试
+    videoInfo.value = null; fetchError.value = null;
     selectedFormatId.value = null; audioOnly.value = false; downloadSubtitle.value = false;
     selectedEntries.value = new Set(); allEntriesSelected.value = true; batchUrls.value = [];
+  }
+
+  function clearUrl() {
+    // ★ 新增：完全清空URL的函数
+    currentUrl.value = '';
+    reset();
   }
 
   return {
@@ -298,7 +305,7 @@ export const useDownloadStore = defineStore('download', () => {
     batchUrls, isBatchMode,
     fetchVideo, setBatchUrls, download, downloadBatchUrls,
     cancel, pause, resume, retry,
-    loadHistory, selectFormat, initEventListener, reset,
+    loadHistory, selectFormat, initEventListener, reset, clearUrl,
     toggleEntry, toggleAllEntries, refreshQueueStatus,
     dismissClipboardUrl, acceptClipboardUrl,
   };

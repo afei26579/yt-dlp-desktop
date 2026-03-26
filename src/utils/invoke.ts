@@ -14,6 +14,8 @@ export interface VideoInfo {
   is_playlist: boolean;
   playlist_count: number | null;
   entries: PlaylistEntry[];
+  available_subtitles: string[]; // 可用的字幕语言列表
+  has_subtitles: boolean; // 是否有字幕
 }
 
 export interface PlaylistEntry {

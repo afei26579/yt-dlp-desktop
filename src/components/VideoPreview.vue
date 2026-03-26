@@ -14,6 +14,7 @@
             <span v-if="store.videoInfo.uploader" class="meta-item">👤 {{ store.videoInfo.uploader }}</span>
             <span v-if="formattedDate" class="meta-item">📅 {{ formattedDate }}</span>
             <span v-if="formattedDuration" class="meta-item">⏱ {{ formattedDuration }}</span>
+            <span v-if="store.videoInfo.has_subtitles" class="meta-item subtitle-badge" :title="subtitleTooltip">💬 {{ subtitleCount }}</span>
           </div>
           <div v-if="store.videoInfo.is_playlist" class="playlist-badge">📃 {{ t('preview.playlist') }} · {{ store.videoInfo.playlist_count }} {{ t('preview.videos') }}</div>
         </div>
@@ -32,6 +33,14 @@ watch(() => store.videoInfo, () => { imgError.value = false; });
 const thumbnailUrl = computed(() => { if (imgError.value) return null; const u = store.videoInfo?.thumbnail; if (!u) return null; return u.startsWith('http://') ? u.replace('http://', 'https://') : u; });
 const formattedDuration = computed(() => { const d = store.videoInfo?.duration; if (!d || d <= 0) return ''; const h = Math.floor(d / 3600), m = Math.floor((d % 3600) / 60), s = Math.floor(d % 60); return h > 0 ? `${h}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}` : `${m}:${s.toString().padStart(2,'0')}`; });
 const formattedDate = computed(() => { const d = store.videoInfo?.upload_date; if (!d) return ''; return d.length === 8 ? `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}` : d; });
+const subtitleCount = computed(() => {
+  const langs = store.videoInfo?.available_subtitles || [];
+  return langs.length > 0 ? `${langs.length} 种字幕` : '';
+});
+const subtitleTooltip = computed(() => {
+  const langs = store.videoInfo?.available_subtitles || [];
+  return langs.length > 0 ? `可用字幕: ${langs.join(', ')}` : '';
+});
 </script>
 
 <style scoped>
@@ -47,5 +56,6 @@ const formattedDate = computed(() => { const d = store.videoInfo?.upload_date; i
 .video-title { font-size: 16px; font-weight: 600; line-height: 1.4; color: var(--text-primary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .video-meta { display: flex; gap: 16px; flex-wrap: wrap; }
 .meta-item { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
+.subtitle-badge { color: var(--accent); font-weight: 500; cursor: help; }
 .playlist-badge { display: inline-flex; align-items: center; gap: 4px; background: var(--accent-light); color: var(--accent); font-size: 13px; font-weight: 500; padding: 4px 10px; border-radius: var(--radius-full); width: fit-content; }
 </style>

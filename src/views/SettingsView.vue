@@ -354,18 +354,6 @@
         </div>
       </section>
 
-      <section class="settings-section">
-        <h3 class="section-title">💾 {{ t('settings.dataManage') }}</h3>
-        <div class="data-actions">
-          <button class="btn btn-secondary" @click="handleExportHistory('json')">📤 {{ t('settings.exportHistory') }} (JSON)</button>
-          <button class="btn btn-secondary" @click="handleExportHistory('csv')">📤 {{ t('settings.exportHistory') }} (CSV)</button>
-          <button class="btn btn-secondary" @click="handleImportUrls">📥 {{ t('settings.importUrls') }}</button>
-          <button class="btn btn-secondary" @click="handleExportSettings">⬆️ {{ t('settings.exportSettings') }}</button>
-          <button class="btn btn-secondary" @click="handleImportSettings">⬇️ {{ t('settings.importSettings') }}</button>
-        </div>
-        <div v-if="dataMessage" class="data-message" :class="dataMessageType">{{ dataMessage }}</div>
-      </section>
-
       <div class="settings-actions">
         <button class="btn btn-primary" @click="handleSave" :disabled="isSaving">
           {{ isSaving ? t('settings.saving') : '💾 ' + t('settings.save') }}
@@ -379,13 +367,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
-import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { useSettingsStore } from '@/stores/settings';
-import { useDownloadStore } from '@/stores/download';
 import {
   checkYtdlp, updateYtdlp,
-  exportHistory, importUrls,
-  exportSettingsFile, importSettingsFile,
   diagnoseCookie,
 } from '@/utils/invoke';
 import type { CookieDiagnostic } from '@/utils/invoke';
@@ -415,7 +400,6 @@ interface DiagResultUI {
 const props = defineProps<{ scrollTo?: string | null }>();
 
 const settingsStore = useSettingsStore();
-const downloadStore = useDownloadStore();
 const settings = computed(() => settingsStore.settings);
 const isSaving = ref(false);
 const ytdlpVersion = ref('');
@@ -424,8 +408,6 @@ const cookieMethod = ref<'none' | 'file' | 'browser'>('none');
 const isUpdating = ref(false);
 const updateResult = ref('');
 const updateResultType = ref('');
-const dataMessage = ref('');
-const dataMessageType = ref('');
 const cookieSectionRef = ref<HTMLElement | null>(null);
 const isHighlighted = ref(false);
 const speedLimitNumber = ref<number | null>(null);
@@ -682,62 +664,6 @@ function handleReset() {
   diagResult.value = null;
   autoSave();
 }
-
-async function handleExportHistory(format: string) {
-  try {
-    const ext = format === 'csv' ? 'csv' : 'json';
-    const path = await saveDialog({
-      title: t('settings.exportHistory'),
-      defaultPath: `history.${ext}`,
-      filters: [{ name: format.toUpperCase(), extensions: [ext] }],
-    });
-    if (path) { await exportHistory(format, path as string); showData('✅ Export successful!', 'success'); }
-  } catch (e: any) { showData(`❌ ${e.message || e}`, 'error'); }
-}
-
-async function handleImportUrls() {
-  try {
-    const path = await openDialog({
-      title: t('settings.importUrls'),
-      filters: [{ name: 'Text', extensions: ['txt'] }, { name: 'All', extensions: ['*'] }],
-    });
-    if (path) {
-      const urls = await importUrls(path as string);
-      showData(`✅ Imported ${urls.length} URLs`, 'success');
-      if (urls.length > 0) { downloadStore.currentUrl = urls[0]; downloadStore.fetchVideo(urls[0]); }
-    }
-  } catch (e: any) { showData(`❌ ${e.message || e}`, 'error'); }
-}
-
-async function handleExportSettings() {
-  try {
-    const path = await saveDialog({
-      title: t('settings.exportSettings'),
-      defaultPath: 'settings.json',
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-    });
-    if (path) { await exportSettingsFile(path as string); showData('✅ Export successful!', 'success'); }
-  } catch (e: any) { showData(`❌ ${e.message || e}`, 'error'); }
-}
-
-async function handleImportSettings() {
-  try {
-    const path = await openDialog({
-      title: t('settings.importSettings'),
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-    });
-    if (path) {
-      const imported = await importSettingsFile(path as string);
-      settingsStore.settings = imported;
-      showData('✅ Import successful!', 'success');
-    }
-  } catch (e: any) { showData(`❌ ${e.message || e}`, 'error'); }
-}
-
-function showData(msg: string, type: string) {
-  dataMessage.value = msg; dataMessageType.value = type;
-  setTimeout(() => { dataMessage.value = ''; }, 3000);
-}
 </script>
 
 <style scoped>
@@ -789,10 +715,6 @@ function showData(msg: string, type: string) {
 .update-result { padding: 8px 14px; border-radius: var(--radius-sm); font-size: 13px; margin: 8px 0; }
 .update-result.success { background: var(--success-msg-bg); color: var(--success-msg-text); }
 .update-result.error { background: var(--error-msg-bg); color: var(--error-msg-text); }
-.data-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
-.data-message { padding: 8px 14px; border-radius: var(--radius-sm); font-size: 13px; margin-top: 8px; }
-.data-message.success { background: var(--success-msg-bg); color: var(--success-msg-text); }
-.data-message.error { background: var(--error-msg-bg); color: var(--error-msg-text); }
 .settings-actions { display: flex; align-items: center; gap: 12px; padding-top: 8px; }
 .save-hint { font-size: 12px; color: var(--success); }
 
