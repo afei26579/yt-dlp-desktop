@@ -108,8 +108,9 @@ impl DouyinDownloader {
     }
 }
 
+#[async_trait::async_trait]
 impl Downloader for DouyinDownloader {
-    fn fetch_info(&self, url: &str) -> Result<VideoInfo, String> {
+    async fn fetch_info(&self, url: &str) -> Result<VideoInfo, String> {
         let api_url = format!("{}/api/douyin/web/fetch_one_video", self.api_base);
 
         let response = self
@@ -198,7 +199,7 @@ impl Downloader for DouyinDownloader {
         })
     }
 
-    fn start_download(
+    async fn start_download(
         &self,
         options: DownloadOptions,
         progress_callback: Box<dyn Fn(DownloadProgress) + Send>,
@@ -343,16 +344,16 @@ impl Downloader for DouyinDownloader {
         Ok(pid)
     }
 
-    fn cancel_download(&self, _pid: u32) -> Result<(), String> {
+    async fn cancel_download(&self, _pid: u32) -> Result<(), String> {
         // TODO: Implement cancellation logic with Arc<AtomicBool>
         Err("Cancellation not yet implemented for Douyin downloader".to_string())
     }
 
-    fn pause_download(&self, _pid: u32) -> Result<(), String> {
+    async fn pause_download(&self, _pid: u32) -> Result<(), String> {
         Err("Pause not supported for Douyin downloader".to_string())
     }
 
-    fn resume_download(&self, _pid: u32) -> Result<(), String> {
+    async fn resume_download(&self, _pid: u32) -> Result<(), String> {
         Err("Resume not supported for Douyin downloader".to_string())
     }
 }
