@@ -4,6 +4,7 @@ mod clipboard;
 mod commands;
 mod config;
 mod database;
+mod downloader;
 mod export;
 mod queue;
 mod updater;

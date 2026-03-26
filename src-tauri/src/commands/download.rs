@@ -5,6 +5,8 @@ use chrono::Local;
 
 use crate::database::Database;
 use crate::database::models::*;
+use crate::downloader::{detect_downloader_type, DownloaderType};
+use crate::downloader::douyin::DouyinDownloader;
 use crate::ytdlp::binary;
 use crate::ytdlp::process::ProcessManager;
 use crate::config::ConfigManager;
@@ -23,10 +25,26 @@ pub struct AppState {
 
 #[tauri::command]
 pub async fn fetch_video_info(url: String, state: State<'_, AppState>) -> Result<VideoInfo, String> {
-    let config = state.config.load();
-    let app_dir = state.config.app_dir();
-    let ytdlp_path = binary::get_ytdlp_path(&app_dir)?;
-    state.process_manager.fetch_video_info(&ytdlp_path, &url, &config).await
+    let downloader_type = detect_downloader_type(&url);
+
+    match downloader_type {
+        DownloaderType::Douyin => {
+            log::info!("Using DouyinDownloader for URL: {}", url);
+            let config = state.config.load();
+            let douyin_api_endpoint = config.douyin_api_endpoint.clone();
+            let downloader = DouyinDownloader::new(douyin_api_endpoint);
+
+            use crate::downloader::Downloader;
+            downloader.fetch_info(&url).await
+        }
+        DownloaderType::YtDlp => {
+            log::info!("Using YtDlpDownloader for URL: {}", url);
+            let config = state.config.load();
+            let app_dir = state.config.app_dir();
+            let ytdlp_path = binary::get_ytdlp_path(&app_dir)?;
+            state.process_manager.fetch_video_info(&ytdlp_path, &url, &config).await
+        }
+    }
 }
 
 #[tauri::command]

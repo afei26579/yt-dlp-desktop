@@ -117,6 +117,7 @@ pub struct AppSettings {
     pub download_thumbnail: bool,
     pub download_metadata: bool,
     pub audio_quality: String,
+    pub douyin_api_endpoint: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,6 +154,7 @@ impl Default for AppSettings {
             download_thumbnail: false,
             download_metadata: false,
             audio_quality: "0".into(),
+            douyin_api_endpoint: None,
         }
     }
 }
