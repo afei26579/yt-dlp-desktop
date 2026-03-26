@@ -12,7 +12,7 @@ mod ytdlp;
 use std::sync::Arc;
 use std::path::PathBuf;
 use tauri::{
-    Manager, Emitter, Image,
+    Manager, Emitter, image::Image,
     tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent},
     menu::{MenuBuilder, MenuItemBuilder},
 };
@@ -137,7 +137,6 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let icon_path = if dev_icon.exists() {
         dev_icon
     } else {
-        // 构建模式下，图标通常在可执行文件旁边或资源目录
         PathBuf::from("icons/icon.ico")
     };
 
@@ -145,9 +144,12 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         log::warn!("Tray icon not found at: {:?}", icon_path);
     }
 
-    // 读取图标文件
+    // 读取图标文件并转换为 RGBA 数据
     let icon_data = std::fs::read(&icon_path)?;
-    let icon_image = Image::from_bytes(&icon_data)?;
+    let dynamic_image = image::load_from_memory(&icon_data)?;
+    let rgba_image = dynamic_image.to_rgba8();
+    let (width, height) = rgba_image.dimensions();
+    let icon_image = Image::new_owned(rgba_image.into_raw(), width, height);
 
     let menu = MenuBuilder::new(app)
         .item(&show)

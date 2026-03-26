@@ -77,3 +77,10 @@ src-tauri/binaries/yt-dlp.exe
 src-tauri/binaries/ffmpeg.exe
 src-tauri/binaries/yt-dlp
 src-tauri/binaries/ffmpeg
+
+
+# test proxy
+test.py
+
+# ide
+.claude
