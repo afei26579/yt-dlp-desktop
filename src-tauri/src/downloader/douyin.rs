@@ -16,9 +16,21 @@ pub struct DouyinDownloader {
 
 #[derive(Debug, Deserialize)]
 struct DouyinApiResponse {
-    code: i32,
-    message: String,
-    data: Option<DouyinVideoData>,
+    #[serde(flatten)]
+    response: DouyinApiResponseType,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum DouyinApiResponseType {
+    Success {
+        code: i32,
+        message: String,
+        data: Option<DouyinVideoData>,
+    },
+    Error {
+        detail: serde_json::Value,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,34 +100,8 @@ impl DouyinDownloader {
             api_base: api_base.unwrap_or_else(|| "https://api.douyin.wtf".to_string()),
         }
     }
-}
 
-#[async_trait::async_trait]
-impl Downloader for DouyinDownloader {
-    async fn fetch_info(&self, url: &str) -> Result<VideoInfo, String> {
-        let api_url = format!("{}/api/douyin/web/fetch_one_video", self.api_base);
-
-        let response = self
-            .client
-            .get(&api_url)
-            .query(&[("url", url)])
-            .send()
-            .await
-            .map_err(|e| format!("Failed to fetch video info: {}", e))?;
-
-        let api_response: DouyinApiResponse = response
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse API response: {}", e))?;
-
-        if api_response.code != 200 {
-            return Err(format!("API error: {}", api_response.message));
-        }
-
-        let data = api_response
-            .data
-            .ok_or_else(|| "No video data in response".to_string())?;
-
+    fn parse_video_data(&self, url: &str, data: DouyinVideoData) -> Result<VideoInfo, String> {
         let video_id = data
             .aweme_id
             .clone()
@@ -196,6 +182,50 @@ impl Downloader for DouyinDownloader {
             has_subtitles: false,
         })
     }
+}
+
+#[async_trait::async_trait]
+impl Downloader for DouyinDownloader {
+    async fn fetch_info(&self, url: &str) -> Result<VideoInfo, String> {
+        // Try hybrid endpoint first (supports both URL and ID)
+        let api_url = format!("{}/api/hybrid/video_data", self.api_base);
+
+        log::info!("Fetching Douyin video info from: {}", api_url);
+
+        let response = self
+            .client
+            .get(&api_url)
+            .query(&[("url", url)])
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch video info: {}", e))?;
+
+        let status = response.status();
+        let response_text = response
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read response: {}", e))?;
+
+        log::info!("API response status: {}, body: {}", status, &response_text[..response_text.len().min(500)]);
+
+        let api_response: DouyinApiResponse = serde_json::from_str(&response_text)
+            .map_err(|e| format!("Failed to parse API response: {} (response: {})", e, &response_text[..response_text.len().min(200)]))?;
+
+        match api_response.response {
+            DouyinApiResponseType::Success { code, message, data } => {
+                if code != 200 {
+                    return Err(format!("API error: {}", message));
+                }
+
+                let data = data.ok_or_else(|| "No video data in response".to_string())?;
+
+                self.parse_video_data(url, data)
+            }
+            DouyinApiResponseType::Error { detail } => {
+                Err(format!("API error: {}", detail))
+            }
+        }
+    }
 
     async fn start_download(
         &self,
@@ -204,7 +234,7 @@ impl Downloader for DouyinDownloader {
     ) -> Result<u32, String> {
         let pid = NEXT_PID.fetch_add(1, Ordering::SeqCst);
 
-        let api_url = format!("{}/api/douyin/web/fetch_one_video", self.api_base);
+        let api_url = format!("{}/api/hybrid/video_data", self.api_base);
         let client = self.client.clone();
         let url = options.url.clone();
         let output_dir = options.output_dir.clone();
@@ -222,18 +252,25 @@ impl Downloader for DouyinDownloader {
                     .await
                     .map_err(|e| format!("Failed to fetch video info: {}", e))?;
 
-                let api_response: DouyinApiResponse = response
-                    .json()
+                let response_text = response
+                    .text()
                     .await
+                    .map_err(|e| format!("Failed to read response: {}", e))?;
+
+                let api_response: DouyinApiResponse = serde_json::from_str(&response_text)
                     .map_err(|e| format!("Failed to parse API response: {}", e))?;
 
-                if api_response.code != 200 {
-                    return Err(format!("API error: {}", api_response.message));
-                }
-
-                let data = api_response
-                    .data
-                    .ok_or_else(|| "No video data in response".to_string())?;
+                let data = match api_response.response {
+                    DouyinApiResponseType::Success { code, message, data } => {
+                        if code != 200 {
+                            return Err(format!("API error: {}", message));
+                        }
+                        data.ok_or_else(|| "No video data in response".to_string())?
+                    }
+                    DouyinApiResponseType::Error { detail } => {
+                        return Err(format!("API error: {}", detail));
+                    }
+                };
 
                 let title = data
                     .desc
