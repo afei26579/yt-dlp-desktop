@@ -164,14 +164,17 @@ impl Downloader for DouyinDownloader {
         if let Some(video) = &data.video {
             if let Some(play_addr) = &video.play_addr {
                 if let Some(url_list) = &play_addr.url_list {
-                    if let Some(video_url) = url_list.first() {
+                    if let Some(_video_url) = url_list.first() {
                         formats.push(FormatInfo {
                             format_id: "video".to_string(),
-                            quality_label: "原画".to_string(),
+                            format_note: Some("原画".to_string()),
                             ext: "mp4".to_string(),
+                            resolution: None,
                             filesize: None,
-                            has_audio: true,
-                            has_video: true,
+                            filesize_approx: None,
+                            vcodec: Some("h264".to_string()),
+                            acodec: Some("aac".to_string()),
+                            quality_label: "原画".to_string(),
                         });
                     }
                 }
@@ -181,21 +184,32 @@ impl Downloader for DouyinDownloader {
         // Add audio-only format
         formats.push(FormatInfo {
             format_id: "audio".to_string(),
-            quality_label: "音频".to_string(),
+            format_note: Some("音频".to_string()),
             ext: "m4a".to_string(),
+            resolution: None,
             filesize: None,
-            has_audio: true,
-            has_video: false,
+            filesize_approx: None,
+            vcodec: None,
+            acodec: Some("aac".to_string()),
+            quality_label: "音频".to_string(),
         });
 
         Ok(VideoInfo {
-            id: video_id,
-            title,
+            id: video_id.clone(),
+            title: title.clone(),
+            url: url.to_string(),
             thumbnail,
-            duration,
+            duration: duration.map(|d| d as f64),
             uploader: Some(uploader),
-            formats,
+            upload_date: None,
             description: data.desc.clone(),
+            webpage_url: url.to_string(),
+            formats,
+            is_playlist: false,
+            playlist_count: None,
+            entries: Vec::new(),
+            available_subtitles: Vec::new(),
+            has_subtitles: false,
         })
     }
 
@@ -262,13 +276,15 @@ impl Downloader for DouyinDownloader {
                 let output_path = output_dir.join(format!("{}.{}", title, ext));
 
                 progress_callback(DownloadProgress {
-                    url: url.clone(),
+                    task_id: url.clone(),
+                    status: crate::database::models::DownloadStatus::Downloading,
                     progress: 0.0,
                     speed: None,
                     eta: None,
                     total_size: None,
                     downloaded_size: None,
-                    status: "downloading".to_string(),
+                    output_path: None,
+                    error_message: None,
                 });
 
                 // Download the file
@@ -282,26 +298,29 @@ impl Downloader for DouyinDownloader {
                     .map_err(|e| format!("Failed to create file: {}", e))?;
 
                 let mut downloaded: u64 = 0;
-                let mut buffer = vec![0; 8192];
+
+                use std::io::Read;
+                let mut buffer = [0u8; 8192];
 
                 loop {
                     let n = response
-                        .copy_to(&mut buffer[..])
+                        .read(&mut buffer)
                         .map_err(|e| format!("Download error: {}", e))?;
 
                     if n == 0 {
                         break;
                     }
 
-                    file.write_all(&buffer[..n as usize])
+                    file.write_all(&buffer[..n])
                         .map_err(|e| format!("Write error: {}", e))?;
 
-                    downloaded += n;
+                    downloaded += n as u64;
 
                     if let Some(total) = total_size {
                         let progress = (downloaded as f64 / total as f64) * 100.0;
                         progress_callback(DownloadProgress {
-                            url: url.clone(),
+                            task_id: url.clone(),
+                            status: crate::database::models::DownloadStatus::Downloading,
                             progress,
                             speed: None,
                             eta: None,
@@ -310,19 +329,22 @@ impl Downloader for DouyinDownloader {
                                 "{:.2}MB",
                                 downloaded as f64 / 1024.0 / 1024.0
                             )),
-                            status: "downloading".to_string(),
+                            output_path: None,
+                            error_message: None,
                         });
                     }
                 }
 
                 progress_callback(DownloadProgress {
-                    url: url.clone(),
+                    task_id: url.clone(),
+                    status: crate::database::models::DownloadStatus::Completed,
                     progress: 100.0,
                     speed: None,
                     eta: None,
                     total_size: None,
                     downloaded_size: None,
-                    status: "completed".to_string(),
+                    output_path: Some(output_path.to_string_lossy().to_string()),
+                    error_message: None,
                 });
 
                 Ok(())
@@ -330,13 +352,15 @@ impl Downloader for DouyinDownloader {
 
             if let Err(e) = result {
                 progress_callback(DownloadProgress {
-                    url: url.clone(),
+                    task_id: url.clone(),
+                    status: crate::database::models::DownloadStatus::Failed,
                     progress: 0.0,
                     speed: None,
                     eta: None,
                     total_size: None,
                     downloaded_size: None,
-                    status: format!("error: {}", e),
+                    output_path: None,
+                    error_message: Some(e),
                 });
             }
         });

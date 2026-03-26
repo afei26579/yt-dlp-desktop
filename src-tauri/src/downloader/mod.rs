@@ -4,6 +4,19 @@ pub mod ytdlp;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+// Re-export types from database::models for convenience
+pub use crate::database::models::{VideoInfo, FormatInfo, DownloadProgress};
+
+#[derive(Debug, Clone)]
+pub struct DownloadOptions {
+    pub url: String,
+    pub format_id: Option<String>,
+    pub audio_only: bool,
+    pub download_subtitle: bool,
+    pub subtitle_lang: Option<String>,
+    pub output_dir: PathBuf,
+}
+
 #[async_trait::async_trait]
 pub trait Downloader: Send + Sync {
     async fn fetch_info(&self, url: &str) -> Result<VideoInfo, String>;
