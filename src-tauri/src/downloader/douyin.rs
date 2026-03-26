@@ -1,11 +1,10 @@
 use super::{DownloadOptions, DownloadProgress, Downloader, FormatInfo, VideoInfo};
-use reqwest::blocking::Client;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::fs::File;
-use std::io::Write;
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
-use std::thread;
 
 static NEXT_PID: AtomicU32 = AtomicU32::new(10000);
 
@@ -89,23 +88,6 @@ impl DouyinDownloader {
             api_base: api_base.unwrap_or_else(|| "https://api.douyin.wtf".to_string()),
         }
     }
-
-    fn extract_video_id(&self, url: &str) -> Result<String, String> {
-        // Extract video ID from various Douyin/TikTok URL formats
-        // https://www.douyin.com/video/7xxxxx
-        // https://v.douyin.com/xxxxx/
-
-        if let Some(pos) = url.find("/video/") {
-            let id_part = &url[pos + 7..];
-            let id = id_part.split(&['/', '?'][..]).next().unwrap_or("");
-            if !id.is_empty() {
-                return Ok(id.to_string());
-            }
-        }
-
-        // For short URLs, we need to follow redirects
-        Err("Unable to extract video ID from URL".to_string())
-    }
 }
 
 #[async_trait::async_trait]
@@ -118,10 +100,12 @@ impl Downloader for DouyinDownloader {
             .get(&api_url)
             .query(&[("url", url)])
             .send()
+            .await
             .map_err(|e| format!("Failed to fetch video info: {}", e))?;
 
         let api_response: DouyinApiResponse = response
             .json()
+            .await
             .map_err(|e| format!("Failed to parse API response: {}", e))?;
 
         if api_response.code != 200 {
@@ -153,7 +137,7 @@ impl Downloader for DouyinDownloader {
             .as_ref()
             .and_then(|v| v.cover.as_ref())
             .and_then(|c| c.url_list.as_ref())
-            .and_then(|list| list.first())
+            .and_then(|list: &Vec<String>| list.first())
             .cloned();
 
         let duration = data.video.as_ref().and_then(|v| v.duration);
@@ -216,7 +200,7 @@ impl Downloader for DouyinDownloader {
     async fn start_download(
         &self,
         options: DownloadOptions,
-        progress_callback: Box<dyn Fn(DownloadProgress) + Send>,
+        progress_callback: Box<dyn Fn(DownloadProgress) + Send + Sync>,
     ) -> Result<u32, String> {
         let pid = NEXT_PID.fetch_add(1, Ordering::SeqCst);
 
@@ -226,17 +210,21 @@ impl Downloader for DouyinDownloader {
         let output_dir = options.output_dir.clone();
         let audio_only = options.audio_only;
 
-        thread::spawn(move || {
-            let result = (|| -> Result<(), String> {
+        let progress_callback = Arc::new(progress_callback);
+
+        tokio::spawn(async move {
+            let result = async {
                 // Fetch video info first
                 let response = client
                     .get(&api_url)
                     .query(&[("url", url.as_str())])
                     .send()
+                    .await
                     .map_err(|e| format!("Failed to fetch video info: {}", e))?;
 
                 let api_response: DouyinApiResponse = response
                     .json()
+                    .await
                     .map_err(|e| format!("Failed to parse API response: {}", e))?;
 
                 if api_response.code != 200 {
@@ -261,14 +249,14 @@ impl Downloader for DouyinDownloader {
                         .as_ref()
                         .and_then(|v| v.play_addr.as_ref())
                         .and_then(|p| p.url_list.as_ref())
-                        .and_then(|list| list.first())
+                        .and_then(|list: &Vec<String>| list.first())
                         .ok_or_else(|| "No video URL found".to_string())?
                 } else {
                     data.video
                         .as_ref()
                         .and_then(|v| v.play_addr.as_ref())
                         .and_then(|p| p.url_list.as_ref())
-                        .and_then(|list| list.first())
+                        .and_then(|list: &Vec<String>| list.first())
                         .ok_or_else(|| "No video URL found".to_string())?
                 };
 
@@ -291,49 +279,54 @@ impl Downloader for DouyinDownloader {
                 let mut response = client
                     .get(download_url)
                     .send()
+                    .await
                     .map_err(|e| format!("Failed to download: {}", e))?;
 
                 let total_size = response.content_length();
                 let mut file = File::create(&output_path)
+                    .await
                     .map_err(|e| format!("Failed to create file: {}", e))?;
 
                 let mut downloaded: u64 = 0;
 
-                use std::io::Read;
+                use tokio::io::AsyncReadExt;
                 let mut buffer = [0u8; 8192];
 
-                loop {
-                    let n = response
-                        .read(&mut buffer)
-                        .map_err(|e| format!("Download error: {}", e))?;
+                while let Ok(n) = response.chunk().await {
+                    if let Some(chunk) = n {
+                        if chunk.is_empty() {
+                            break;
+                        }
 
-                    if n == 0 {
+                        file.write_all(&chunk)
+                            .await
+                            .map_err(|e| format!("Write error: {}", e))?;
+
+                        downloaded += chunk.len() as u64;
+
+                        if let Some(total) = total_size {
+                            let progress = (downloaded as f64 / total as f64) * 100.0;
+                            progress_callback(DownloadProgress {
+                                task_id: url.clone(),
+                                status: crate::database::models::DownloadStatus::Downloading,
+                                progress,
+                                speed: None,
+                                eta: None,
+                                total_size: Some(format!("{:.2}MB", total as f64 / 1024.0 / 1024.0)),
+                                downloaded_size: Some(format!(
+                                    "{:.2}MB",
+                                    downloaded as f64 / 1024.0 / 1024.0
+                                )),
+                                output_path: None,
+                                error_message: None,
+                            });
+                        }
+                    } else {
                         break;
                     }
-
-                    file.write_all(&buffer[..n])
-                        .map_err(|e| format!("Write error: {}", e))?;
-
-                    downloaded += n as u64;
-
-                    if let Some(total) = total_size {
-                        let progress = (downloaded as f64 / total as f64) * 100.0;
-                        progress_callback(DownloadProgress {
-                            task_id: url.clone(),
-                            status: crate::database::models::DownloadStatus::Downloading,
-                            progress,
-                            speed: None,
-                            eta: None,
-                            total_size: Some(format!("{:.2}MB", total as f64 / 1024.0 / 1024.0)),
-                            downloaded_size: Some(format!(
-                                "{:.2}MB",
-                                downloaded as f64 / 1024.0 / 1024.0
-                            )),
-                            output_path: None,
-                            error_message: None,
-                        });
-                    }
                 }
+
+                file.flush().await.map_err(|e| format!("Flush error: {}", e))?;
 
                 progress_callback(DownloadProgress {
                     task_id: url.clone(),
@@ -347,8 +340,9 @@ impl Downloader for DouyinDownloader {
                     error_message: None,
                 });
 
-                Ok(())
-            })();
+                Ok::<(), String>(())
+            }
+            .await;
 
             if let Err(e) = result {
                 progress_callback(DownloadProgress {

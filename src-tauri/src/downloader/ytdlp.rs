@@ -35,7 +35,7 @@ impl Downloader for YtDlpDownloader {
     async fn start_download(
         &self,
         _options: DownloadOptions,
-        _progress_callback: Box<dyn Fn(DownloadProgress) + Send>,
+        _progress_callback: Box<dyn Fn(DownloadProgress) + Send + Sync>,
     ) -> Result<u32, String> {
         // This needs to be async, but trait requires sync
         Err("YtDlpDownloader::start_download requires async context".to_string())

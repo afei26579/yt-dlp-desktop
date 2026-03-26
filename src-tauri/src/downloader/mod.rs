@@ -20,7 +20,7 @@ pub struct DownloadOptions {
 #[async_trait::async_trait]
 pub trait Downloader: Send + Sync {
     async fn fetch_info(&self, url: &str) -> Result<VideoInfo, String>;
-    async fn start_download(&self, options: DownloadOptions, progress_callback: Box<dyn Fn(DownloadProgress) + Send>) -> Result<u32, String>;
+    async fn start_download(&self, options: DownloadOptions, progress_callback: Box<dyn Fn(DownloadProgress) + Send + Sync>) -> Result<u32, String>;
     async fn cancel_download(&self, pid: u32) -> Result<(), String>;
     async fn pause_download(&self, pid: u32) -> Result<(), String>;
     async fn resume_download(&self, pid: u32) -> Result<(), String>;
