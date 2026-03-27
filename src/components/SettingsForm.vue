@@ -122,6 +122,19 @@
 
       <div class="setting-item">
         <div class="setting-info">
+          <label>抖音 API 端点</label>
+          <span class="setting-desc">用于下载抖音视频（留空则仅使用 yt-dlp）</span>
+        </div>
+        <input
+          type="text"
+          v-model="settings.douyin_api_endpoint"
+          placeholder="https://api.douyin.wtf"
+          class="setting-input"
+        />
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-info">
           <label>yt-dlp 版本</label>
         </div>
         <div class="version-display">

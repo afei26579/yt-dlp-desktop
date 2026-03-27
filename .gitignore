@@ -85,3 +85,9 @@ test.py
 # ide
 .claude
 CLAUDE.md
+
+# Docs
+docs/*
+CLAUDE.md
+TODO.md
+PRODUCT_DESIGN.md

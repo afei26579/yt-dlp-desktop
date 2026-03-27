@@ -22,6 +22,7 @@ export const useSettingsStore = defineStore('settings', () => {
     notify_on_complete: true, notify_on_error: true,
     speed_limit: null, download_thumbnail: false,
     download_metadata: false, audio_quality: '0',
+    douyin_api_endpoint: 'https://api.douyin.wtf',
   });
   const isLoading = ref(false);
 

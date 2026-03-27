@@ -1,8 +1,11 @@
 use std::collections::{VecDeque, HashMap};
 use std::sync::Arc;
+use std::path::PathBuf;
 use tokio::sync::{Mutex, Notify, mpsc};
 use tauri::Emitter;
 use crate::database::models::*;
+use crate::downloader::{detect_downloader_type, DownloaderType, Downloader, DownloadOptions};
+use crate::downloader::douyin::DouyinDownloader;
 
 #[derive(Debug, Clone)]
 pub struct QueuedTask {
@@ -167,10 +170,67 @@ pub fn start_queue_worker(
                         }
                     });
 
-                    let result = pm.start_download(
-                        &queued_task.ytdlp_path, &queued_task.ffmpeg_path,
-                        &task, &queued_task.settings, is_resume, tx,
-                    ).await;
+                    // Detect downloader type and route accordingly
+                    let downloader_type = detect_downloader_type(&task.url);
+                    let url = task.url.clone();
+
+                    let result = match downloader_type {
+                        DownloaderType::Douyin => {
+                            // Try Douyin API first if configured
+                            if let Some(ref api_endpoint) = settings.douyin_api_endpoint {
+                                if !api_endpoint.is_empty() {
+                                    log::info!("Using DouyinDownloader for task {}", task_id);
+                                    let downloader = DouyinDownloader::new(Some(api_endpoint.clone()));
+
+                                    let download_dir = PathBuf::from(&settings.download_path);
+                                    let options = DownloadOptions {
+                                        url: url.clone(),
+                                        format_id: task.format_id.clone(),
+                                        audio_only: task.audio_only,
+                                        download_subtitle: task.download_subtitle,
+                                        subtitle_lang: task.subtitle_lang.clone(),
+                                        output_dir: download_dir,
+                                    };
+
+                                    let tx_clone = tx.clone();
+                                    let progress_callback = Box::new(move |progress: DownloadProgress| {
+                                        let _ = tx_clone.send(progress);
+                                    });
+
+                                    match downloader.start_download(options, progress_callback).await {
+                                        Ok(_) => Ok(true),
+                                        Err(e) => {
+                                            log::warn!("DouyinDownloader failed: {}, falling back to yt-dlp", e);
+                                            // Fallback to yt-dlp
+                                            pm.start_download(
+                                                &queued_task.ytdlp_path, &queued_task.ffmpeg_path,
+                                                &task, &queued_task.settings, is_resume, tx,
+                                            ).await
+                                        }
+                                    }
+                                } else {
+                                    // No API endpoint configured, use yt-dlp
+                                    pm.start_download(
+                                        &queued_task.ytdlp_path, &queued_task.ffmpeg_path,
+                                        &task, &queued_task.settings, is_resume, tx,
+                                    ).await
+                                }
+                            } else {
+                                // No API endpoint configured, use yt-dlp
+                                pm.start_download(
+                                    &queued_task.ytdlp_path, &queued_task.ffmpeg_path,
+                                    &task, &queued_task.settings, is_resume, tx,
+                                ).await
+                            }
+                        }
+                        DownloaderType::YtDlp => {
+                            // Use yt-dlp for all other URLs
+                            pm.start_download(
+                                &queued_task.ytdlp_path, &queued_task.ffmpeg_path,
+                                &task, &queued_task.settings, is_resume, tx,
+                            ).await
+                        }
+                    };
 
                     match &result {
                         Ok(true) => {

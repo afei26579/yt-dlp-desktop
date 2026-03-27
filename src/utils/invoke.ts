@@ -100,6 +100,7 @@ export interface AppSettings {
   download_thumbnail: boolean;
   download_metadata: boolean;
   audio_quality: string;
+  douyin_api_endpoint: string | null;
 }
 
 export interface QueueStatus {
