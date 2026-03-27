@@ -338,6 +338,19 @@
       <section class="settings-section">
         <h3 class="section-title">⚡ {{ t('settings.advanced') }}</h3>
         <div class="setting-item">
+          <div class="setting-info">
+            <label>抖音 API 端点</label>
+            <span class="setting-desc">用于下载抖音视频（留空则仅使用 yt-dlp）</span>
+          </div>
+          <input
+            type="text"
+            v-model="settings.douyin_api_endpoint"
+            placeholder="https://api.douyin.wtf"
+            class="setting-input"
+            @blur="autoSave"
+          />
+        </div>
+        <div class="setting-item">
           <div class="setting-info"><label>{{ t('settings.ytdlpVersion') }}</label></div>
           <div class="version-display">
             <span class="version-text">{{ ytdlpVersion || t('settings.checking') }}</span>
@@ -353,14 +366,6 @@
           <input type="text" v-model="settings.extra_args" placeholder="--limit-rate 10M" class="setting-input" @blur="autoSave" />
         </div>
       </section>
-
-      <div class="settings-actions">
-        <button class="btn btn-primary" @click="handleSave" :disabled="isSaving">
-          {{ isSaving ? t('settings.saving') : '💾 ' + t('settings.save') }}
-        </button>
-        <button class="btn btn-secondary" @click="handleReset">↩️ {{ t('settings.reset') }}</button>
-        <span v-if="lastSaveTime" class="save-hint">✅ {{ lastSaveTime }}</span>
-      </div>
     </div>
   </div>
 </template>
@@ -659,7 +664,7 @@ function handleReset() {
     notify_on_complete: true, notify_on_error: true,
     speed_limit: null, download_thumbnail: false,
     download_metadata: false, audio_quality: '0',
-    douyin_api_endpoint: 'https://api.douyin.wtf',
+    douyin_api_endpoint: null,
   };
   cookieMethod.value = 'none';
   diagResult.value = null;

@@ -154,7 +154,7 @@ impl Default for AppSettings {
             download_thumbnail: false,
             download_metadata: false,
             audio_quality: "0".into(),
-            douyin_api_endpoint: Some("https://api.douyin.wtf".into()),
+            douyin_api_endpoint: None,
         }
     }
 }

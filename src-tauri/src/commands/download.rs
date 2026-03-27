@@ -35,21 +35,28 @@ pub async fn fetch_video_info(url: String, state: State<'_, AppState>) -> Result
             // Try Douyin API first if endpoint is configured
             if let Some(ref api_endpoint) = config.douyin_api_endpoint {
                 if !api_endpoint.is_empty() {
-                    log::info!("Trying DouyinDownloader with API: {}", api_endpoint);
+                    log::info!("Douyin API endpoint configured: {}, trying API first", api_endpoint);
                     let downloader = DouyinDownloader::new(Some(api_endpoint.clone()));
 
                     use crate::downloader::Downloader;
                     match downloader.fetch_info(&url).await {
-                        Ok(info) => return Ok(info),
+                        Ok(info) => {
+                            log::info!("Successfully fetched video info via Douyin API");
+                            return Ok(info);
+                        }
                         Err(e) => {
-                            log::warn!("DouyinDownloader failed: {}, falling back to yt-dlp", e);
+                            log::warn!("Douyin API failed: {}, falling back to yt-dlp", e);
                         }
                     }
+                } else {
+                    log::info!("Douyin API endpoint is empty, using yt-dlp directly");
                 }
+            } else {
+                log::info!("Douyin API endpoint not configured, using yt-dlp directly");
             }
 
             // Fallback to yt-dlp
-            log::info!("Using yt-dlp as fallback for Douyin URL");
+            log::info!("Using yt-dlp for Douyin/TikTok URL");
             let app_dir = state.config.app_dir();
             let ytdlp_path = binary::get_ytdlp_path(&app_dir)?;
             state.process_manager.fetch_video_info(&ytdlp_path, &url, &config).await

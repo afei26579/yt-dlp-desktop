@@ -22,7 +22,7 @@ export const useSettingsStore = defineStore('settings', () => {
     notify_on_complete: true, notify_on_error: true,
     speed_limit: null, download_thumbnail: false,
     download_metadata: false, audio_quality: '0',
-    douyin_api_endpoint: 'https://api.douyin.wtf',
+    douyin_api_endpoint: null,
   });
   const isLoading = ref(false);
 
@@ -41,7 +41,12 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function save() {
     try {
-      await apiSaveSettings(settings.value);
+      // Convert empty string to null for douyin_api_endpoint
+      const settingsToSave = {
+        ...settings.value,
+        douyin_api_endpoint: settings.value.douyin_api_endpoint?.trim() || null,
+      };
+      await apiSaveSettings(settingsToSave);
       await updateMaxConcurrent(settings.value.max_concurrent);
       await setClipboardWatch(settings.value.clipboard_watch);
       setLang(settings.value.language as Lang);
